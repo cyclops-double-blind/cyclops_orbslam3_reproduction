@@ -9,9 +9,9 @@ mkdir -p build/pangolin || exit 1
 mkdir -p build/orbslam3 || exit 1
 
 docker run --rm -it \
-    -v $(pwd)/src/deps/Pangolin:/Pangolin \
-    -v $(pwd)/build/pangolin:/build \
-    -v $(pwd)/install:/usr/local \
+    -v $base_directory/src/deps/Pangolin:/Pangolin \
+    -v $base_directory/build/pangolin:/build \
+    -v $base_directory/install:/usr/local \
     orbslam3-docker-deps \
     bash -c "\
         cmake -H/Pangolin -B/build \
@@ -20,9 +20,9 @@ docker run --rm -it \
     "
 
 docker run --rm -it \
-    -v $(pwd)/src/deps/ORB_SLAM3:/ORB_SLAM3 \
-    -v $(pwd)/build/orbslam3:/build \
-    -v $(pwd)/install:/usr/local \
+    -v $base_directory/src/deps/ORB_SLAM3:/ORB_SLAM3 \
+    -v $base_directory/build/orbslam3:/build \
+    -v $base_directory/install:/usr/local \
     orbslam3-docker-deps \
     bash -c "\
         cmake -H/ORB_SLAM3/Thirdparty/DBoW2 -B/build/DBoW2 \
@@ -37,9 +37,9 @@ docker run --rm -it \
     "
 
 docker run --rm -it \
-    -v $(pwd)/src/deps/ORB_SLAM3:/ORB_SLAM3 \
-    -v $(pwd)/build/orbslam3:/build \
-    -v $(pwd)/install:/usr/local \
+    -v $base_directory/src/deps/ORB_SLAM3:/ORB_SLAM3 \
+    -v $base_directory/build/orbslam3:/build \
+    -v $base_directory/install:/usr/local \
     orbslam3-docker-deps \
     bash -c "\
         cmake -H/ORB_SLAM3/Thirdparty/g2o -B/build/g2o \
@@ -54,9 +54,9 @@ docker run --rm -it \
     "
 
 docker run --rm -it \
-    -v $(pwd)/src/deps/ORB_SLAM3:/ORB_SLAM3 \
-    -v $(pwd)/build/orbslam3:/build \
-    -v $(pwd)/install:/usr/local \
+    -v $base_directory/src/deps/ORB_SLAM3:/ORB_SLAM3 \
+    -v $base_directory/build/orbslam3:/build \
+    -v $base_directory/install:/usr/local \
     orbslam3-docker-deps \
     bash -c "\
         cmake -H/ORB_SLAM3/Thirdparty/Sophus -B/build/Sophus \
@@ -68,9 +68,9 @@ docker run --rm -it \
     "
 
 docker run --rm -it \
-    -v $(pwd)/src/deps/ORB_SLAM3:/ORB_SLAM3 \
-    -v $(pwd)/build/orbslam3:/build \
-    -v $(pwd)/install:/usr/local \
+    -v $base_directory/src/deps/ORB_SLAM3:/ORB_SLAM3 \
+    -v $base_directory/build/orbslam3:/build \
+    -v $base_directory/install:/usr/local \
     orbslam3-docker-deps \
     bash -c "\
         cmake -H/ORB_SLAM3 -B/build/orbslam3 \
