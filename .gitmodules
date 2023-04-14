@@ -1,3 +1,6 @@
 [submodule "src/deps/ORB_SLAM3"]
 	path = src/deps/ORB_SLAM3
 	url = https://github.com/UZ-SLAMLab/ORB_SLAM3
+[submodule "src/deps/Pangolin"]
+	path = src/deps/Pangolin
+	url = https://github.com/stevenlovegrove/Pangolin
