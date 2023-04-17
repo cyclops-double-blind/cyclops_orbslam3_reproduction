@@ -19,9 +19,9 @@ catkin_package (
    roscpp std_msgs cv_bridge image_transport sensor_msgs message_runtime
 )
 
-add_executable(mono_imu "")
+add_executable(mono_imu__containerized "")
 target_include_directories(
-  mono_imu PRIVATE
+  mono_imu__containerized PRIVATE
   ${catkin_INCLUDE_DIRS}
   src
   # Since we are running inside a container, it is fine to hard-code the library
@@ -30,7 +30,7 @@ target_include_directories(
   /usr/local/include/CameraModels
 )
 target_link_libraries(
-  mono_imu PRIVATE
+  mono_imu__containerized PRIVATE
   pangolin
   opencv_core
   Eigen3::Eigen
@@ -38,10 +38,10 @@ target_link_libraries(
 
   /usr/local/lib/libORB_SLAM3.so
 )
-target_compile_features(mono_imu PRIVATE cxx_std_17)
+target_compile_features(mono_imu__containerized PRIVATE cxx_std_17)
 
 add_subdirectory(src)
 
-install(TARGETS mono_imu
+install(TARGETS mono_imu__containerized
   RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
