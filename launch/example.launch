@@ -1,0 +1,24 @@
+<?xml version="1.0"?>
+<launch>
+  <node pkg="orbslam3_docker"
+      type="mono_imu" name="orbslam3_mono_imu" output="screen">
+    <rosparam>
+      clahe:
+        clip_limit: 3.0
+        tilesize:
+          width: 8
+          height: 8
+
+      vocabulary_path: /orbslam3/ORBvoc.txt
+      settings_path: /orbslam3/config.yaml
+
+      imu_callback_queue_size: 2048
+      image_callback_queue_size: 256
+      image_data_buffer_maxsize: 128
+
+      data_consume_worker_loop_delay_ms: 1
+      imu_topic: imu
+      image_topic: camera/image_raw
+    </rosparam>
+  </node>
+</launch>

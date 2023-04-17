@@ -1,0 +1,124 @@
+#!/usr/bin/env python
+import os
+import sys
+import re
+import subprocess
+import signal
+
+
+def yield_success(matches):
+    matches = [match for match in matches if match is not None]
+    return matches[0] if len(matches) > 0 else None
+
+
+def parse_nodename(argv):
+    matches = [
+        re.match(r'__name\s*:=\s*(?P<name>.+)', arg)
+        for arg in argv
+    ]
+    match = yield_success(matches)
+    return (
+        match.group('name') if match else None,
+        [arg for (arg, match) in zip(argv, matches) if match is None],
+    )
+
+
+def hijack_nodename_argv(argv):
+    argv_original = [arg for arg in argv]
+    nodename_original, argv_else = parse_nodename(argv_original[1:])
+    argv_new_nodename = (
+        [] if nodename_original is None else
+        ['__name:={}'.format(nodename_original + '__launcher')]
+    )
+
+    argv_nodename_hijacked = argv_original[0:1] + argv_new_nodename + argv_else
+    return argv_original, argv_nodename_hijacked
+
+
+argv_original, argv_hijacked = hijack_nodename_argv(sys.argv)
+sys.argv = argv_hijacked
+
+import rospy
+import rospkg
+import docker
+
+
+def maybe_get_namespace():
+    if 'ROS_NAMESPACE' in os.environ:
+        return os.environ['ROS_NAMESPACE']
+    return None
+
+
+def maybe_get_asset_mountdir():
+    try:
+        return rospy.get_param('~asset_mountdir')
+    except KeyError:
+        pass
+
+    # try elsewhere
+    rospack = rospkg.RosPack()
+    try:
+        return rospack.get_path('orbslam3_docker') + '/assets'
+    except rospkg.common.ResourceNotFound:
+        pass
+    return None
+
+
+def parse_log_path(argv):
+    matches = [
+        re.match(r'__log\s*:=\s*(?P<log>.+)', arg)
+        for arg in argv
+    ]
+    match = yield_success(matches)
+    return (
+        match.group('log') if match else None,
+        [arg for (arg, match) in zip(argv, matches) if match is None],
+    )
+
+
+def make_container_argv(argv):
+    _, argv = parse_log_path(argv[1:])
+    return argv
+
+
+def run_container(client, namespace, argv, asset_mountdir):
+    image = 'orbslam3-docker-app'
+    binpath = '/catkin_ws/orbslam3_docker_ros/mono_imu__containerized'
+    return client.containers.run(
+        image,
+        command=[binpath] + argv,
+        auto_remove=True,
+        network='host',
+        volumes={asset_mountdir: {'bind': '/orbslam3', 'mode': 'ro'}},
+        environment={} if namespace is None else {'ROS_NAMESPACE': namespace},
+        detach=True,
+    )
+
+
+def shutdown(container):
+    container.stop(timeout=5)
+
+
+def main():
+    rospy.init_node('mono_imu')
+
+    namespace = maybe_get_namespace()
+    argv = make_container_argv(argv_original)
+
+    asset_mountdir = maybe_get_asset_mountdir()
+    if asset_mountdir is None:
+        rospy.logerr('failed to obtain asset mount directory.')
+        rospy.logerr('aborting...')
+        return None
+
+    client = docker.from_env()
+    container = run_container(client, namespace, argv, asset_mountdir)
+    logs = container.logs(stream=True, follow=True)
+
+    rospy.on_shutdown(lambda: shutdown(container))
+    for log in logs:
+        rospy.loginfo(log.strip())
+
+
+if __name__ == '__main__':
+    main()
