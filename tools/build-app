@@ -1,0 +1,5 @@
+#!/bin/bash
+base_directory=$(realpath $(dirname "$BASH_SOURCE")/..)
+
+docker build $base_directory -f $base_directory/Dockerfile.app \
+    --tag orbslam3-docker-app

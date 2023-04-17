@@ -1,3 +1,7 @@
-src/app
+build/*
+assets/*
+src/catkin/build
+src/catkin/devel
+src/catkin/src
 src/deps
 .git/*
