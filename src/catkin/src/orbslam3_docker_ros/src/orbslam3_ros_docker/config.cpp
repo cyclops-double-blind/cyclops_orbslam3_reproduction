@@ -74,14 +74,33 @@ namespace orbslam3_ros_docker {
       .image_data_buffer_maxsize =
         get_param<int>(node, "image_data_buffer_maxsize", 128),
 
+      .tracking_image_publish_queue_size =
+        get_param<int>(node, "tracking_image_publish_queue_size", 8),
+      .camera_pose_publish_queue_size =
+        get_param<int>(node, "camera_pose_publish_queue_size", 32),
+      .landmark_pointcloud_publish_queue_size =
+        get_param<int>(node, "landmark_pointcloud_publish_queue_size", 1),
+
       .data_consume_worker_loop_delay_ms =
         get_param<int>(node, "data_consume_worker_loop_delay_ms", 1),
 
       .imu_topic = get_param<std::string>(node, "imu_topic", "imu"),
       .image_topic =
         get_param<std::string>(node, "image_topic", "camera/image_raw"),
+
+      .tracking_image_publish_topic = get_param<std::string>(
+        node, "tracking_image_publish_topic", "tracking_image"),
+      .camera_pose_publish_topic = get_param<std::string>(
+        node, "camera_pose_publish_topic", "camera_pose"),
+      .landmark_pointcloud_publish_topic =
+        get_param<std::string>(node, "map_point_publish_topic", "map_points"),
+
       .vocabulary_path = *maybe_vocabulary_path,
       .settings_path = *maybe_settings_path,
+
+      .world_frame_id = get_param<std::string>(node, "world_frame_id", "map"),
+      .camera_frame_id =
+        get_param<std::string>(node, "camera_frame_id", "camera"),
     });
   }
 }  // namespace orbslam3_ros_docker

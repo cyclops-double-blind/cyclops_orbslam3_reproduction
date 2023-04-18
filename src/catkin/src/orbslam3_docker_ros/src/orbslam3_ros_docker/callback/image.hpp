@@ -17,6 +17,7 @@ namespace ros {
 namespace orbslam3_ros_docker {
   struct config_t;
   struct ImuCallbackHandler;
+  struct TopicPublishHandler;
 
   class ImageCallbackHandler {
   private:
@@ -27,7 +28,8 @@ namespace orbslam3_ros_docker {
     ImageCallbackHandler(
       ros::NodeHandle& node, std::shared_ptr<config_t const> config,
       std::unique_ptr<ORB_SLAM3::System> slam,
-      std::unique_ptr<ImuCallbackHandler> imu_grabber);
+      std::unique_ptr<ImuCallbackHandler> imu_grabber,
+      std::unique_ptr<TopicPublishHandler> topic_publisher);
     ~ImageCallbackHandler();
 
     std::thread startDataConsumeThread();

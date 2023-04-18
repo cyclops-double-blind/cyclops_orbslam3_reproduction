@@ -1,6 +1,7 @@
 #include "orbslam3_ros_docker/callback/image.hpp"
 #include "orbslam3_ros_docker/callback/imu.hpp"
 #include "orbslam3_ros_docker/config.hpp"
+#include "orbslam3_ros_docker/publish/publisher.hpp"
 
 #include "System.h"  // ORB-SLAM3 header. (provided without project subdirectory)
 
@@ -8,6 +9,7 @@
 
 using orbslam3_ros_docker::ImageCallbackHandler;
 using orbslam3_ros_docker::ImuCallbackHandler;
+using orbslam3_ros_docker::TopicPublishHandler;
 
 int main(int argc, char** argv) {
   ros::init(argc, argv, "orbslam3_ros_mono_imu_docker");
@@ -26,9 +28,12 @@ int main(int argc, char** argv) {
     config->vocabulary_path, config->settings_path,
     ORB_SLAM3::System::IMU_MONOCULAR, false);
 
+  auto topic_publisher = std::make_unique<TopicPublishHandler>(node, config);
+
   auto imu_handler = std::make_unique<ImuCallbackHandler>(node, config);
   auto image_handler = std::make_unique<ImageCallbackHandler>(
-    node, config, std::move(orbslam), std::move(imu_handler));
+    node, config, std::move(orbslam), std::move(imu_handler),
+    std::move(topic_publisher));
 
   auto consume_worker = image_handler->startDataConsumeThread();
   ros::spin();

@@ -5,12 +5,6 @@ RUN apt-get update -y \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-COPY --from=orbslam3-docker-build \
-    /opt/ros/melodic/lib/libcv_bridge.so /opt/ros/melodic/lib/libcv_bridge.so
-COPY --from=orbslam3-docker-build \
-    /opt/ros/melodic/share/cv_bridge/package.xml \
-    /opt/ros/melodic/share/cv_bridge/package.xml
-
 RUN apt-get update -y \
     && apt-get install -y --no-install-recommends \
       libopencv-core3.2 libopencv-imgproc3.2 libopencv-imgcodecs3.2 \
@@ -22,6 +16,13 @@ RUN apt-get update -y \
 RUN apt-get update -y \
     && apt-get install -y --no-install-recommends \
         avahi-daemon avahi-discover libnss-mdns \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN apt-get update -y \
+    && apt-get install -y --no-install-recommends \
+        ros-melodic-cv-bridge ros-melodic-image-transport \
+        ros-melodic-tf2-ros \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 

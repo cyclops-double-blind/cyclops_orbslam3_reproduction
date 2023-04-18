@@ -1,6 +1,7 @@
 #include "orbslam3_ros_docker/callback/image.hpp"
 #include "orbslam3_ros_docker/callback/imu.hpp"
 #include "orbslam3_ros_docker/config.hpp"
+#include "orbslam3_ros_docker/publish/publisher.hpp"
 
 #include "System.h"  // ORB-SLAM3 header. (provided without project subdirectory)
 
@@ -32,6 +33,8 @@ namespace orbslam3_ros_docker {
     std::shared_ptr<config_t const> _config;
     std::unique_ptr<ORB_SLAM3::System> _slam;
     std::unique_ptr<ImuCallbackHandler> _imu_grabber;
+    std::unique_ptr<TopicPublishHandler> _topic_publisher;
+
     ros::Subscriber __subscriber__;
 
     std::mutex mutable _mutex;
@@ -41,14 +44,15 @@ namespace orbslam3_ros_docker {
     void dataConsumeJob();
     void onImage(sensor_msgs::ImageConstPtr const& msg);
 
-    optional<tuple<double, cv::Mat, unique_lock_t>> grabImage() const;
+    optional<tuple<ros::Time, cv::Mat, unique_lock_t>> grabImage() const;
     unique_lock_t popImage(unique_lock_t grab_lock);
 
   public:
     Impl(
       ros::NodeHandle& node, std::shared_ptr<config_t const> config,
       std::unique_ptr<ORB_SLAM3::System> slam,
-      std::unique_ptr<ImuCallbackHandler> imu_grabber);
+      std::unique_ptr<ImuCallbackHandler> imu_grabber,
+      std::unique_ptr<TopicPublishHandler> topic_publisher);
     std::thread startDataConsumeThread();
   };
 
@@ -79,7 +83,7 @@ namespace orbslam3_ros_docker {
     return cv_ptr->image.clone();
   }
 
-  optional<tuple<timestamp_t, cv::Mat, unique_lock_t>>
+  optional<tuple<ros::Time, cv::Mat, unique_lock_t>>
   ImageCallbackHandler::Impl::grabImage() const {
     std::unique_lock<std::mutex> grab_lock(_mutex);
 
@@ -87,7 +91,7 @@ namespace orbslam3_ros_docker {
       return std::nullopt;
 
     auto const& msg = _buffer.front();
-    auto timestamp = msg->header.stamp.toSec();
+    auto timestamp = msg->header.stamp;
     auto maybe_image = make_cvimage(msg);
     if (!maybe_image)
       return std::nullopt;
@@ -107,7 +111,8 @@ namespace orbslam3_ros_docker {
       auto maybe_image = grabImage();
       if (!maybe_image)
         continue;
-      auto& [image_timestamp, image, lock] = *maybe_image;
+      auto& [image_rostime, image, lock] = *maybe_image;
+      auto image_timestamp = image_rostime.toSec();
 
       auto imu_frame = _imu_grabber->popDataUntilTimestamp(image_timestamp);
       if (!imu_frame)
@@ -118,8 +123,16 @@ namespace orbslam3_ros_docker {
         continue;
 
       _clahe->apply(image, image);
-      _slam->TrackMonocular(image, image_timestamp, *imu_frame);
 
+      ROS_INFO_STREAM("updating image. timestamp: " << image_timestamp);
+      ROS_INFO_STREAM("imu frame: " << imu_frame->size());
+      auto x_cw = _slam->TrackMonocular(image, image_timestamp, *imu_frame);
+      auto x_wc = x_cw.inverse();
+
+      _topic_publisher->publishCameraPose(image_rostime, x_wc);
+      _topic_publisher->publishCameraPoseTf2(image_rostime, x_wc);
+      _topic_publisher->publishLandmarkPointcloud(
+        image_rostime, _slam->GetTrackedMapPoints());
     }
   }
 
@@ -130,10 +143,12 @@ namespace orbslam3_ros_docker {
   ImageCallbackHandler::Impl::Impl(
     ros::NodeHandle& node, std::shared_ptr<config_t const> config,
     std::unique_ptr<ORB_SLAM3::System> slam,
-    std::unique_ptr<ImuCallbackHandler> imu_grabber)
+    std::unique_ptr<ImuCallbackHandler> imu_grabber,
+    std::unique_ptr<TopicPublishHandler> topic_publisher)
       : _config(config),
         _slam(std::move(slam)),
-        _imu_grabber(std::move(imu_grabber)) {
+        _imu_grabber(std::move(imu_grabber)),
+        _topic_publisher(std::move(topic_publisher)) {
     __subscriber__ = node.subscribe(
       config->image_topic, config->image_callback_queue_size, &Impl::onImage,
       this);
@@ -148,9 +163,11 @@ namespace orbslam3_ros_docker {
   ImageCallbackHandler::ImageCallbackHandler(
     ros::NodeHandle& node, std::shared_ptr<config_t const> config,
     std::unique_ptr<ORB_SLAM3::System> slam,
-    std::unique_ptr<ImuCallbackHandler> imu_grabber)
+    std::unique_ptr<ImuCallbackHandler> imu_grabber,
+    std::unique_ptr<TopicPublishHandler> topic_publisher)
       : _pimpl(std::make_unique<Impl>(
-          node, config, std::move(slam), std::move(imu_grabber))) {
+          node, config, std::move(slam), std::move(imu_grabber),
+          std::move(topic_publisher))) {
   }
 
   ImageCallbackHandler::~ImageCallbackHandler() = default;

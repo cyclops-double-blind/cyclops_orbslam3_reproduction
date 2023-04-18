@@ -5,3 +5,4 @@ target_sources(
   ${CMAKE_CURRENT_SOURCE_DIR}/config.hpp
 )
 add_subdirectory(callback)
+add_subdirectory(publish)
