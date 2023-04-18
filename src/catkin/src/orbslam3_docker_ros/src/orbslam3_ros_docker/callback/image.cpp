@@ -101,8 +101,9 @@ namespace orbslam3_ros_docker {
 
   void ImageCallbackHandler::Impl::dataConsumeJob() {
     auto loop_delay = _config->data_consume_worker_loop_delay_ms;
+    while (ros::ok()) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(loop_delay));
 
-    while (true) {
       auto maybe_image = grabImage();
       if (!maybe_image)
         continue;
@@ -119,7 +120,6 @@ namespace orbslam3_ros_docker {
       _clahe->apply(image, image);
       _slam->TrackMonocular(image, image_timestamp, *imu_frame);
 
-      std::this_thread::sleep_for(std::chrono::milliseconds(loop_delay));
     }
   }
 
