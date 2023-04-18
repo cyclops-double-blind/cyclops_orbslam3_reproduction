@@ -19,6 +19,12 @@ RUN apt-get update -y \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
+RUN apt-get update -y \
+    && apt-get install -y --no-install-recommends \
+        avahi-daemon avahi-discover libnss-mdns \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
 RUN mkdir -p /catkin_ws
 COPY install/lib /usr/lib
 COPY src/catkin/install/* /catkin_ws/
