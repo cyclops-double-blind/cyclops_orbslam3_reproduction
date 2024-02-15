@@ -33,6 +33,7 @@ namespace orbslam3_ros_docker {
       ros::NodeHandle& node, std::shared_ptr<config_t const> config);
     ~ImuCallbackHandler();
 
+    void clear();
     std::optional<std::vector<ORB_SLAM3::IMU::Point>> popDataUntilTimestamp(
       double timestamp);
   };

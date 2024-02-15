@@ -20,6 +20,11 @@ namespace orbslam3_ros_docker {
     return;
   }
 
+  void ImuCallbackHandler::clear() {
+    std::lock_guard<std::mutex> _(_mutex);
+    _buffer = {};
+  }
+
   std::optional<std::vector<ORB_SLAM3::IMU::Point>>
   ImuCallbackHandler::popDataUntilTimestamp(double timestamp) {
     std::lock_guard<std::mutex> _(_mutex);

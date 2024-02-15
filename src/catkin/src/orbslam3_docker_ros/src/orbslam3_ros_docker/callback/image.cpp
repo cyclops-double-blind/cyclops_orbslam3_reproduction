@@ -12,6 +12,8 @@
 #include <ros/console.h>
 #include <ros/node_handle.h>
 
+#include <std_msgs/Bool.h>
+
 #include <mutex>
 #include <queue>
 #include <vector>
@@ -36,14 +38,19 @@ namespace orbslam3_ros_docker {
     std::unique_ptr<TopicPublishHandler> _topic_publisher;
 
     ros::Subscriber __subscriber__;
+    ros::Subscriber __reset_subscriber__;
 
     std::mutex mutable _mutex;
+    bool _reset_request = false;
     std::queue<sensor_msgs::ImageConstPtr> _buffer;
+
     cv::Ptr<cv::CLAHE> _clahe;
 
     void dataConsumeJob();
     void onImage(sensor_msgs::ImageConstPtr const& msg);
+    void onReset(std_msgs::BoolConstPtr const& msg);
 
+    bool popReset();
     optional<tuple<ros::Time, cv::Mat, unique_lock_t>> grabImage() const;
     unique_lock_t popImage(unique_lock_t grab_lock);
 
@@ -67,6 +74,11 @@ namespace orbslam3_ros_docker {
     _buffer.push(msg);
   }
 
+  void ImageCallbackHandler::Impl::onReset(std_msgs::BoolConstPtr const& msg) {
+    std::lock_guard<std::mutex> _(_mutex);
+    _reset_request = true;
+  }
+
   static optional<cv::Mat> make_cvimage(sensor_msgs::ImageConstPtr const& msg) {
     cv_bridge::CvImageConstPtr cv_ptr;
     try {
@@ -81,6 +93,13 @@ namespace orbslam3_ros_docker {
         "Image type error. expected: %d, got: %d", 0, cv_ptr->image.type());
     }
     return cv_ptr->image.clone();
+  }
+
+  bool ImageCallbackHandler::Impl::popReset() {
+    std::lock_guard<std::mutex> _(_mutex);
+    auto result = _reset_request;
+    _reset_request = false;
+    return result;
   }
 
   optional<tuple<ros::Time, cv::Mat, unique_lock_t>>
@@ -105,6 +124,7 @@ namespace orbslam3_ros_docker {
 
   void ImageCallbackHandler::Impl::dataConsumeJob() {
     auto loop_delay = _config->data_consume_worker_loop_delay_ms;
+
     while (ros::ok()) {
       std::this_thread::sleep_for(std::chrono::milliseconds(loop_delay));
 
@@ -123,16 +143,27 @@ namespace orbslam3_ros_docker {
         continue;
 
       _clahe->apply(image, image);
-
-      ROS_INFO_STREAM("updating image. timestamp: " << image_timestamp);
-      ROS_INFO_STREAM("imu frame: " << imu_frame->size());
       auto x_cw = _slam->TrackMonocular(image, image_timestamp, *imu_frame);
-      auto x_wc = x_cw.inverse();
 
-      _topic_publisher->publishCameraPose(image_rostime, x_wc);
-      _topic_publisher->publishCameraPoseTf2(image_rostime, x_wc);
-      _topic_publisher->publishLandmarkPointcloud(
-        image_rostime, _slam->GetTrackedMapPoints());
+      _topic_publisher->publishTrackingFrameImage(
+        image_rostime, _slam->GetTrackingFrameImage());
+      if (_slam->isIMUInitialized()) {
+        auto x_wc = x_cw.inverse();
+
+        _topic_publisher->publishCameraPose(image_rostime, x_wc);
+        _topic_publisher->publishCameraPoseTf2(image_rostime, x_wc);
+        _topic_publisher->publishLandmarkPointcloud(
+          image_rostime, _slam->GetTrackedMapPoints());
+
+        if (popReset()) {
+          _slam->Reset();
+          {
+            std::lock_guard<std::mutex> _(_mutex);
+            _buffer = {};
+          }
+          _imu_grabber->clear();
+        }
+      }
     }
   }
 
@@ -152,6 +183,7 @@ namespace orbslam3_ros_docker {
     __subscriber__ = node.subscribe(
       config->image_topic, config->image_callback_queue_size, &Impl::onImage,
       this);
+    __reset_subscriber__ = node.subscribe("reset", 1, &Impl::onReset, this);
 
     if (config->clahe_config) {
       auto const& clahe_config = *config->clahe_config;
