@@ -92,6 +92,7 @@ def run_container(client, namespace, argv, asset_mountdir):
         volumes={asset_mountdir: {'bind': '/orbslam3', 'mode': 'ro'}},
         environment={} if namespace is None else {'ROS_NAMESPACE': namespace},
         detach=True,
+        init=True,
     )
 
 
