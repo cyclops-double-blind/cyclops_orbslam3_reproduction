@@ -132,7 +132,7 @@ namespace orbslam3_ros_docker {
     header.frame_id = _config->camera_frame_id;
     header.stamp = timestamp;
 
-    auto msg = cv_bridge::CvImage(header, "mono8", image).toImageMsg();
+    auto msg = cv_bridge::CvImage(header, "bgr8", image).toImageMsg();
     _frame_image_publisher->publish(msg);
   }
 }  // namespace orbslam3_ros_docker
