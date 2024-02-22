@@ -1,0 +1,6 @@
+#!/bin/bash
+base_directory=$(realpath $(dirname "$BASH_SOURCE")/..)
+
+$base_directory/tools/build-deps || exit 1
+$base_directory/tools/build-catkin || exit 1
+$base_directory/tools/build-app || exit 1
