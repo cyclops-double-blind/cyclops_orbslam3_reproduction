@@ -7,3 +7,5 @@ find_package(catkin REQUIRED COMPONENTS
 )
 
 catkin_package()
+
+execute_process(COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/tools/build")
