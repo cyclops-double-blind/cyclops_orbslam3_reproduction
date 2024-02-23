@@ -10,13 +10,10 @@ def yield_success(matches):
 
 
 def parse_nodename(argv):
-    matches = [
-        re.match(r'__name\s*:=\s*(?P<name>.+)', arg)
-        for arg in argv
-    ]
+    matches = [re.match(r"__name\s*:=\s*(?P<name>.+)", arg) for arg in argv]
     match = yield_success(matches)
     return (
-        match.group('name') if match else None,
+        match.group("name") if match else None,
         [arg for (arg, match) in zip(argv, matches) if match is None],
     )
 
@@ -25,8 +22,9 @@ def hijack_nodename_argv(argv):
     argv_original = [arg for arg in argv]
     nodename_original, argv_else = parse_nodename(argv_original[1:])
     argv_new_nodename = (
-        [] if nodename_original is None else
-        ['__name:={}'.format(nodename_original + '__launcher')]
+        []
+        if nodename_original is None
+        else ["__name:={}".format(nodename_original + "__launcher")]
     )
 
     argv_nodename_hijacked = argv_original[0:1] + argv_new_nodename + argv_else
@@ -37,13 +35,12 @@ argv_original, argv_hijacked = hijack_nodename_argv(sys.argv)
 sys.argv = argv_hijacked
 
 import rospy
-import rospkg
 import docker
 
 
 def maybe_get_namespace():
-    if 'ROS_NAMESPACE' in os.environ:
-        return os.environ['ROS_NAMESPACE']
+    if "ROS_NAMESPACE" in os.environ:
+        return os.environ["ROS_NAMESPACE"]
     return None
 
 
@@ -86,13 +83,10 @@ def get_mounts():
 
 
 def parse_log_path(argv):
-    matches = [
-        re.match(r'__log\s*:=\s*(?P<log>.+)', arg)
-        for arg in argv
-    ]
+    matches = [re.match(r"__log\s*:=\s*(?P<log>.+)", arg) for arg in argv]
     match = yield_success(matches)
     return (
-        match.group('log') if match else None,
+        match.group("log") if match else None,
         [arg for (arg, match) in zip(argv, matches) if match is None],
     )
 
@@ -122,12 +116,13 @@ def shutdown(container):
 
 
 def main():
-    rospy.init_node('mono_imu')
+    rospy.init_node("mono_imu")
 
     namespace = maybe_get_namespace()
     argv = make_container_argv(argv_original)
 
     mounts = get_mounts()
+    rospy.loginfo("mounts: {}".format(mounts))
 
     client = docker.from_env()
     container = run_container(client, namespace, argv, mounts)
@@ -138,5 +133,5 @@ def main():
         rospy.loginfo(log.strip())
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
