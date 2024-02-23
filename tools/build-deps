@@ -4,9 +4,9 @@ base_directory=$(realpath $(dirname "$BASH_SOURCE")/..)
 docker build $base_directory -f $base_directory/Dockerfile.deps \
     --tag orbslam3-docker-deps
 
-mkdir -p install || exit 1
-mkdir -p build/pangolin || exit 1
-mkdir -p build/orbslam3 || exit 1
+mkdir -p ${base_directory}/install || exit 1
+mkdir -p ${base_directory}/build/pangolin || exit 1
+mkdir -p ${base_directory}/build/orbslam3 || exit 1
 
 docker run --rm -it \
     -v $base_directory/src/deps/Pangolin:/Pangolin \
