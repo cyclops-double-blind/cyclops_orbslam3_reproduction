@@ -40,6 +40,8 @@ namespace orbslam3_ros_docker {
     ros::Subscriber __subscriber__;
     ros::Subscriber __reset_subscriber__;
 
+    std::ofstream _reset_dumpfile;
+
     std::mutex mutable _mutex;
     bool _reset_request = false;
     std::queue<sensor_msgs::ImageConstPtr> _buffer;
@@ -75,6 +77,9 @@ namespace orbslam3_ros_docker {
   }
 
   void ImageCallbackHandler::Impl::onReset(std_msgs::BoolConstPtr const& msg) {
+    if (!_slam->isIMUInitialized())
+      return;
+
     std::lock_guard<std::mutex> _(_mutex);
     _reset_request = true;
   }
@@ -156,6 +161,8 @@ namespace orbslam3_ros_docker {
           image_rostime, _slam->GetTrackedMapPoints());
 
         if (popReset()) {
+          _reset_dumpfile << image_timestamp << std::endl;
+
           _slam->Reset();
           {
             std::lock_guard<std::mutex> _(_mutex);
@@ -190,6 +197,13 @@ namespace orbslam3_ros_docker {
       auto const& [w, h] = clahe_config.tilesize;
       _clahe = cv::createCLAHE(clahe_config.clip_limit, cv::Size(w, h));
     }
+
+    _reset_dumpfile.open(
+      "/var/log/orbslam3.dump.reset_request", std::ios::out | std::ios::app);
+    _reset_dumpfile << std::setprecision(19);
+
+    if (!_reset_dumpfile.is_open())
+      throw std::domain_error("failed to open reset request dump file");
   }
 
   ImageCallbackHandler::ImageCallbackHandler(

@@ -5,7 +5,8 @@
   <!-- Specify container launcher parameters as the following. -->
   <rosparam subst_value="true" ns="$(arg node_name)__launcher">
     mounts: >
-      $(dirname)/../assets:/assets:ro
+      $(dirname)/../assets:/assets:ro,
+      /var/log:/var/log:rw
   </rosparam>
 
   <node name="$(arg node_name)"
