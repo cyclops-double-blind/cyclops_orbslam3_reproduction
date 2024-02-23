@@ -47,19 +47,42 @@ def maybe_get_namespace():
     return None
 
 
-def maybe_get_asset_mountdir():
-    try:
-        return rospy.get_param('~asset_mountdir')
-    except KeyError:
-        pass
+def get_mounts():
+    if not rospy.has_param("~mounts"):
+        return None
 
-    # try elsewhere
-    rospack = rospkg.RosPack()
-    try:
-        return rospack.get_path('orbslam3_docker') + '/assets'
-    except rospkg.common.ResourceNotFound:
-        pass
-    return None
+    mounts = rospy.get_param("~mounts")
+    if not isinstance(mounts, str):
+        rospy.logerr("Mount directory should be provided as a single string.")
+        rospy.logerr("Instead got: {}".format(type(mounts)))
+        return None
+
+    mount_pattern = r"\s*[^(\0|:)]+\s*:\s*[^(\0|:)]+(\s*:\s*(rw|ro)\s*)?"
+    mounts_pattern = r"^({mount},)*{mount}$".format(mount=mount_pattern)
+    if not re.match(mounts_pattern, mounts):
+        rospy.logerr(
+            " ".join(
+                [
+                    "Mount directory should be provided in a comma-separated list of",
+                    "host_path:container_path(:(rw|ro))?",
+                ]
+            )
+        )
+        return None
+
+    def make_mount_volume(mount_repr):
+        splits = [split.strip() for split in mount_repr.split(":")]
+        host_path = splits[0]
+        container_path = splits[1]
+
+        if len(splits) == 2:
+            mount_mode = "rw"
+        else:
+            mount_mode = splits[2]
+
+        return host_path, {"bind": container_path, "mode": mount_mode}
+
+    return dict([make_mount_volume(mount) for mount in mounts.split(",")])
 
 
 def parse_log_path(argv):
@@ -79,16 +102,16 @@ def make_container_argv(argv):
     return argv
 
 
-def run_container(client, namespace, argv, asset_mountdir):
-    image = 'orbslam3-docker-app'
-    binpath = '/catkin_ws/orbslam3_docker_ros/mono_imu__containerized'
+def run_container(client, namespace, argv, mounts):
+    image = "orbslam3-docker-app"
+    binpath = "/catkin_ws/orbslam3_docker_ros/mono_imu__containerized"
     return client.containers.run(
         image,
         command=[binpath] + argv,
         auto_remove=True,
-        network='host',
-        volumes={asset_mountdir: {'bind': '/orbslam3', 'mode': 'ro'}},
-        environment={} if namespace is None else {'ROS_NAMESPACE': namespace},
+        network="host",
+        volumes=mounts,
+        environment={} if namespace is None else {"ROS_NAMESPACE": namespace},
         detach=True,
         init=True,
     )
@@ -104,14 +127,10 @@ def main():
     namespace = maybe_get_namespace()
     argv = make_container_argv(argv_original)
 
-    asset_mountdir = maybe_get_asset_mountdir()
-    if asset_mountdir is None:
-        rospy.logerr('failed to obtain asset mount directory.')
-        rospy.logerr('aborting...')
-        return None
+    mounts = get_mounts()
 
     client = docker.from_env()
-    container = run_container(client, namespace, argv, asset_mountdir)
+    container = run_container(client, namespace, argv, mounts)
     logs = container.logs(stream=True, follow=True)
 
     rospy.on_shutdown(lambda: shutdown(container))
