@@ -28,6 +28,7 @@ RUN apt-get update -y \
 
 RUN mkdir -p /catkin_ws
 COPY install/lib /usr/lib
+COPY install/share/ORBvoc.txt /ORBvoc.txt
 COPY src/catkin/install/* /catkin_ws/
 
 COPY entry/init.sh /entry/init.sh
