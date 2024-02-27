@@ -40,7 +40,8 @@ namespace orbslam3_ros_docker {
     ros::Subscriber __subscriber__;
     ros::Subscriber __reset_subscriber__;
 
-    std::ofstream _reset_dumpfile;
+    std::ofstream _lost_dumpfile;
+    std::optional<double> _session_timestamp;
 
     std::mutex mutable _mutex;
     bool _reset_request = false;
@@ -52,7 +53,15 @@ namespace orbslam3_ros_docker {
     void onImage(sensor_msgs::ImageConstPtr const& msg);
     void onReset(std_msgs::BoolConstPtr const& msg);
 
+    void publishTrackingResult(
+      ros::Time const& image_rostime, Sophus::SE3f const& x_cw);
+
+    void onVIOInit(double init_timestamp);
+    void onVIOLoss(double loss_timestamp, std::string reason);
+
     bool popReset();
+    void reset();
+
     optional<tuple<ros::Time, cv::Mat, unique_lock_t>> grabImage() const;
     unique_lock_t popImage(unique_lock_t grab_lock);
 
@@ -127,6 +136,52 @@ namespace orbslam3_ros_docker {
     return grab_lock;
   }
 
+  void ImageCallbackHandler::Impl::onVIOInit(double init_timestamp) {
+    ROS_INFO_STREAM(
+      "VIO initialized at: " << std::setprecision(19) << init_timestamp);
+    _session_timestamp = init_timestamp;
+  }
+
+  void ImageCallbackHandler::Impl::onVIOLoss(
+    double loss_timestamp, std::string reason) {
+    if (!_session_timestamp.has_value())
+      return;
+
+    auto session_timestamp = *_session_timestamp;
+    _session_timestamp = std::nullopt;
+
+    _lost_dumpfile << loss_timestamp << ",";
+    _lost_dumpfile << session_timestamp << ",";
+    _lost_dumpfile << reason << std::endl;
+
+    auto session_duration = loss_timestamp - session_timestamp;
+    ROS_ERROR_STREAM("VIO lost. Session duration: " << session_duration);
+    ROS_ERROR_STREAM("Reason: " << reason);
+  }
+
+  void ImageCallbackHandler::Impl::publishTrackingResult(
+    ros::Time const& image_rostime, Sophus::SE3f const& x_cw) {
+    _topic_publisher->publishTrackingFrameImage(
+      image_rostime, _slam->GetTrackingFrameImage());
+    if (_slam->isIMUInitialized()) {
+      auto x_wc = x_cw.inverse();
+
+      _topic_publisher->publishCameraPose(image_rostime, x_wc);
+      _topic_publisher->publishCameraPoseTf2(image_rostime, x_wc);
+      _topic_publisher->publishLandmarkPointcloud(
+        image_rostime, _slam->GetTrackedMapPoints());
+    }
+  }
+
+  void ImageCallbackHandler::Impl::reset() {
+    _slam->Reset();
+    {
+      std::lock_guard<std::mutex> _(_mutex);
+      _buffer = {};
+    }
+    _imu_grabber->clear();
+  }
+
   void ImageCallbackHandler::Impl::dataConsumeJob() {
     auto loop_delay = _config->data_consume_worker_loop_delay_ms;
 
@@ -148,28 +203,19 @@ namespace orbslam3_ros_docker {
         continue;
 
       _clahe->apply(image, image);
+
       auto x_cw = _slam->TrackMonocular(image, image_timestamp, *imu_frame);
+      publishTrackingResult(image_rostime, x_cw);
 
-      _topic_publisher->publishTrackingFrameImage(
-        image_rostime, _slam->GetTrackingFrameImage());
-      if (_slam->isIMUInitialized()) {
-        auto x_wc = x_cw.inverse();
+      if (_slam->isIMUInitialized() && !_session_timestamp.has_value())
+        onVIOInit(image_timestamp);
 
-        _topic_publisher->publishCameraPose(image_rostime, x_wc);
-        _topic_publisher->publishCameraPoseTf2(image_rostime, x_wc);
-        _topic_publisher->publishLandmarkPointcloud(
-          image_rostime, _slam->GetTrackedMapPoints());
+      if (!_slam->isIMUInitialized() && _session_timestamp.has_value())
+        onVIOLoss(image_timestamp, "failure");
 
-        if (popReset()) {
-          _reset_dumpfile << image_timestamp << std::endl;
-
-          _slam->Reset();
-          {
-            std::lock_guard<std::mutex> _(_mutex);
-            _buffer = {};
-          }
-          _imu_grabber->clear();
-        }
+      if (_slam->isIMUInitialized() && popReset()) {
+        onVIOLoss(image_timestamp, "reset");
+        reset();
       }
     }
   }
@@ -198,11 +244,11 @@ namespace orbslam3_ros_docker {
       _clahe = cv::createCLAHE(clahe_config.clip_limit, cv::Size(w, h));
     }
 
-    _reset_dumpfile.open(
-      "/var/log/orbslam3.dump.reset_request", std::ios::out | std::ios::app);
-    _reset_dumpfile << std::setprecision(19);
+    _lost_dumpfile.open(
+      "/var/log/orbslam3.dump.lost", std::ios::out | std::ios::app);
+    _lost_dumpfile << std::setprecision(19);
 
-    if (!_reset_dumpfile.is_open())
+    if (!_lost_dumpfile.is_open())
       throw std::domain_error("failed to open reset request dump file");
   }
 
