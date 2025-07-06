@@ -14,4 +14,4 @@ if [ ! $? -eq 0 ] ; then
         && chown -R devel:devel /home/devel
 fi
 
-exec gosu devel /entry/init.sh "$@"
+exec gosu devel /etc/init.sh "$@"

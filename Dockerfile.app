@@ -31,6 +31,6 @@ COPY install/lib /usr/lib
 COPY install/share/ORBvoc.txt /ORBvoc.txt
 COPY src/catkin/install/* /catkin_ws/
 
-COPY entry/init.sh /entry/init.sh
-COPY entry/entry.sh /entry/entry.sh
-ENTRYPOINT ["/entry/entry.sh"]
+COPY etc/init.sh /etc/init.sh
+COPY etc/entry.sh /etc/entry.sh
+ENTRYPOINT ["/etc/entry.sh"]
