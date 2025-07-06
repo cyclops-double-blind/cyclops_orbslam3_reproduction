@@ -1,6 +1,6 @@
 [submodule "src/deps/ORB_SLAM3"]
-	path = src/deps/ORB_SLAM3
+	path = src/ORB_SLAM3
 	url = https://github.com/cyclops-double-blind/ORB_SLAM3
 [submodule "src/deps/Pangolin"]
-	path = src/deps/Pangolin
+	path = src/Pangolin
 	url = https://github.com/stevenlovegrove/Pangolin
