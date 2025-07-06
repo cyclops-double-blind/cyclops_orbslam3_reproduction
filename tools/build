@@ -1,6 +1,180 @@
 #!/bin/bash
-base_directory=$(realpath $(dirname "$BASH_SOURCE")/..)
+set -e  # Exit immediately if a command exits with a non-zero status.
 
-$base_directory/tools/build-deps || exit 1
-$base_directory/tools/build-catkin || exit 1
-$base_directory/tools/build-app || exit 1
+current_script=$(realpath "$BASH_SOURCE")
+base_directory=$(realpath $(dirname "${current_script}")/..)
+
+function should_rebuild_target() {
+  local target=$1
+
+  local srcfile=$2
+  local current_build_script=$3
+
+  local source_directories=("${@:4}")
+  local this_script=$(realpath "$BASH_SOURCE")
+
+  if [[ ! -f "$target" ]]; then
+    return 0
+  fi
+  if [[ "$srcfile" -nt "$target" ]]; then
+    return 0
+  fi
+  if [[ "$this_script" -nt "$target" ]]; then
+    return 0
+  fi
+  if [[ "$current_build_script" -nt "$target" ]]; then
+    return 0
+  fi
+
+  for source_directory in "${source_directories[@]}"; do
+    if [[ -d "$source_directory" ]]; then
+      local updated_files=$(find "$source_directory" -type f -newer "$target")
+
+      if [[ -n "$updated_files" ]]; then
+        return 0
+      fi
+    fi
+  done
+
+  return 1
+}
+
+function build_container_if_needed() {
+  local current_build_script=$1
+  local container_name=$2
+
+  local dockerfile=$3
+  local buildstamp=$4
+
+  local source_directories=("${@:5}")
+
+  if should_rebuild_target "$buildstamp" \
+      "$dockerfile" "$current_build_script" "${source_directories[@]}"; then
+    echo "Build container needs to be rebuilt. Starting build..."
+    docker build $base_directory -f $dockerfile --tag $container_name
+
+    mkdir -p $(dirname "$buildstamp")
+    touch "$buildstamp"
+  else
+    echo "Build container is up-to-date. Skipping rebuild."
+  fi
+}
+
+function build_target_in_container() {
+  local src_basepath="$1"
+  local tgt_basepath="$2"
+  local tgt_postbuild_cmd="$3"
+
+  local src_realpath="${base_directory}/src/$src_basepath"
+
+  local tgt_shortname="$(basename $src_basepath | tr '[:upper:]' '[:lower:]')"
+  local tgt_buildpath="${base_directory}/build/build/$tgt_shortname"
+  local tgt_installpath="$base_directory/build/install/$tgt_basepath"
+
+  mkdir -p "${tgt_buildpath}"
+
+  local tgt_build_cmd=" \
+    cmake -H/$src_basepath -B/build \
+      -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr/local \
+    && cmake --build /build -- -j8"
+
+  if [[ -n "$tgt_postbuild_cmd" ]]; then
+    tgt_build_cmd="$tgt_build_cmd && $tgt_postbuild_cmd"
+  else
+    tgt_build_cmd="$tgt_build_cmd && cmake --build /build --target install"
+  fi
+
+  if should_rebuild_target "$tgt_installpath" \
+      "$base_directory/Dockerfile.deps" "$current_script" "$src_realpath"; then
+    docker run --rm -it \
+      -v $src_realpath:/$src_basepath \
+      -v $tgt_buildpath:/build \
+      -v ${base_directory}/build/install:/usr/local \
+      orbslam3-docker-deps \
+      bash -c "\
+        groupmod -g "$(id -g)" builder || exit 1
+        usermod -u "$(id -u)" -g "$(id -g)" -o builder || exit 1
+
+        exec gosu builder bash -c '$tgt_build_cmd'"
+    touch "$tgt_installpath"
+  else
+    echo "$tgt_installpath is up to date. Nothing to be done."
+  fi
+}
+
+function build_dependencies() {
+  build_container_if_needed $current_script orbslam3-docker-deps \
+    $base_directory/Dockerfile.deps $base_directory/.container.stamp.deps
+
+  mkdir -p ${base_directory}/build/install
+  mkdir -p ${base_directory}/build/build
+
+  build_target_in_container Pangolin lib/libpangolin.so
+
+  build_target_in_container ORB_SLAM3/Thirdparty/DBoW2 lib/libDBoW2.so " \
+    cp /ORB_SLAM3/Thirdparty/DBoW2/lib/libDBoW2.so /usr/local/lib/ && \
+    mkdir -p /usr/local/include/Thirdparty/DBoW2 && \
+    cp -r /ORB_SLAM3/Thirdparty/DBoW2/DBoW2 \
+      /usr/local/include/Thirdparty/DBoW2/ && \
+    cp -r /ORB_SLAM3/Thirdparty/DBoW2/DUtils /usr/local/include/Thirdparty/DBoW2/"
+
+  build_target_in_container ORB_SLAM3/Thirdparty/g2o lib/libg2o.so " \
+    cp /ORB_SLAM3/Thirdparty/g2o/lib/libg2o.so /usr/local/lib/ && \
+    mkdir -p /usr/local/include/Thirdparty/g2o && \
+    cp -r /ORB_SLAM3/Thirdparty/g2o/g2o /usr/local/include/Thirdparty/g2o/ && \
+    cp /ORB_SLAM3/Thirdparty/g2o/config.h /usr/local/include/Thirdparty/g2o/"
+
+  build_target_in_container ORB_SLAM3/Thirdparty/Sophus .install.stamp.sophus " \
+    mkdir -p /usr/local/include/Thirdparty/Sophus && \
+    cp -r /ORB_SLAM3/Thirdparty/Sophus/sophus \
+      /usr/local/include/Thirdparty/Sophus/"
+}
+
+function build_orbslam() {
+  build_target_in_container ORB_SLAM3 lib/libORB_SLAM3.so " \
+    cp /ORB_SLAM3/lib/libORB_SLAM3.so /usr/local/lib/ && \
+    cp -r /ORB_SLAM3/include/* /usr/local/include/"
+}
+
+function build_catkin_workspace() {
+  build_container_if_needed $current_script orbslam3-docker-build \
+    $base_directory/Dockerfile.build \
+    $base_directory/.container.stamp.build
+
+  docker run --rm -it \
+    -v ${base_directory}/build/install:/usr/local \
+    -v ${base_directory}/catkin:${base_directory}/catkin \
+    -w ${base_directory}/catkin \
+    orbslam3-docker-build \
+    bash -c " \
+      groupmod -g "$(id -g)" builder
+      usermod -u "$(id -u)" -g "$(id -g)" -o builder
+
+      exec gosu builder bash -c 'catkin_make \
+        -DCMAKE_BUILD_TYPE=Release -DCMAKE_EXPORT_COMPILE_COMMANDS=yes install'"
+}
+
+function build_app_container() {
+  local orbvoc_src_path="${base_directory}/src/ORB_SLAM3/Vocabulary/ORBvoc.txt.tar.gz"
+  local orbvoc_out_path="$base_directory/build/ORBvoc.txt"
+
+  if should_rebuild_target "$orbvoc_out_path" \
+      "$orbvoc_src_path" "$current_script"; then
+    echo "ORBvoc.txt needs to be rebuilt. Unpacking..."
+
+    tar xvf "$orbvoc_src_path" -C "$(dirname $orbvoc_out_path)"
+    touch $orbvoc_out_path
+  else
+    echo "ORBvoc.txt is up-to-date. Skipping rebuild."
+  fi
+
+  build_container_if_needed $current_script orbslam3-docker-app \
+    $base_directory/Dockerfile.app $base_directory/.container.stamp.app \
+    $base_directory/catkin/install $base_directory/build/install \
+    $base_directory/etc
+}
+
+build_dependencies
+build_orbslam
+build_catkin_workspace
+build_app_container

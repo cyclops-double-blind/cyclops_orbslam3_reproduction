@@ -26,10 +26,9 @@ RUN apt-get update -y \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-RUN mkdir -p /catkin_ws
-COPY install/lib /usr/lib
-COPY install/share/ORBvoc.txt /ORBvoc.txt
-COPY src/catkin/install/* /catkin_ws/
+COPY build/install/lib /usr/lib
+COPY build/ORBvoc.txt /ORBvoc.txt
+COPY catkin/install /catkin
 
 COPY etc/init.sh /etc/init.sh
 COPY etc/entry.sh /etc/entry.sh
